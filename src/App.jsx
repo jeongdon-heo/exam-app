@@ -70,7 +70,7 @@ export default function App(){
   const doTeacherAuth=async()=>{
     try{
       const r=await fetch(`/api/submissions?pw=${encodeURIComponent(pw)}`);
-      if(r.ok){const data=await r.json();setAllRes(data);setTeacherAuth(true);}
+      if(r.ok){const data=await r.json();setAllRes(data);setTeacherAuth(true);loadApiKey();}
       else{alert("비밀번호가 틀립니다.");}
     }catch(e){alert("서버 오류: "+e.message);}
   };
@@ -93,6 +93,41 @@ export default function App(){
       if(d.ok){alert("시험 업로드 완료! (ID: "+d.examId+")");loadExam();}
       else{alert("업로드 실패: "+(d.error||""));}
     }catch(e){alert("오류: "+e.message);}
+  };
+
+  /* ── PDF/이미지 시험지 업로드 (AI 분석) ── */
+  const [docUploading,setDocUploading]=useState(false);
+  const [docError,setDocError]=useState("");
+  const uploadDocument=async(file)=>{
+    setDocUploading(true);setDocError("");
+    const fd=new FormData();fd.append("file",file);
+    try{
+      const r=await fetch("/api/exams/upload-document",{method:"POST",body:fd});
+      const d=await r.json();
+      if(d.ok){alert("AI 분석 완료! 시험이 등록되었습니다. (ID: "+d.examId+")");loadExam();}
+      else{setDocError(d.error||"업로드 실패");}
+    }catch(e){setDocError("네트워크 오류: "+e.message);}
+    finally{setDocUploading(false);}
+  };
+
+  /* ── Gemini API 키 관리 ── */
+  const [apiKeyInput,setApiKeyInput]=useState("");
+  const [apiKeyMasked,setApiKeyMasked]=useState("");
+  const [apiKeySet,setApiKeySet]=useState(false);
+  const [apiKeySaving,setApiKeySaving]=useState(false);
+  const loadApiKey=()=>{
+    fetch("/api/settings/api-key").then(r=>r.json()).then(d=>{setApiKeySet(d.set);setApiKeyMasked(d.masked||"");}).catch(()=>{});
+  };
+  const saveApiKey=async()=>{
+    if(!apiKeyInput.trim())return;
+    setApiKeySaving(true);
+    try{
+      const r=await fetch("/api/settings/api-key",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({apiKey:apiKeyInput})});
+      const d=await r.json();
+      if(d.ok){setApiKeyInput("");loadApiKey();alert("API 키가 저장되었습니다.");}
+      else{alert("저장 실패: "+(d.error||""));}
+    }catch(e){alert("오류: "+e.message);}
+    finally{setApiKeySaving(false);}
   };
 
   const css=`@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');*{box-sizing:border-box;margin:0;padding:0}input:focus,textarea:focus,select:focus{outline:2px solid ${C.acc};outline-offset:-1px}::placeholder{color:#adb5bd}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:#ccc;border-radius:2px}`;
@@ -291,8 +326,36 @@ export default function App(){
         <div style={{padding:"0 16px 20px"}}>
           {/* 시험 업로드 */}
           <div style={{background:C.card,borderRadius:14,padding:"14px 16px",boxShadow:"0 2px 8px rgba(0,0,0,0.04)",marginBottom:16}}>
-            <div style={{fontSize:14,fontWeight:700,marginBottom:10}}>📤 시험 JSON 업로드</div>
-            <input type="file" accept=".json" onChange={e=>{if(e.target.files[0])uploadExam(e.target.files[0]);e.target.value="";}} style={{fontFamily:F,fontSize:13,color:C.tx2}} />
+            <div style={{fontSize:14,fontWeight:700,marginBottom:12}}>📤 시험지 업로드</div>
+            <div style={{background:"#f0f4ff",borderRadius:10,padding:"14px",marginBottom:10,border:"2px dashed "+C.acc+"60",opacity:docUploading?0.5:1,pointerEvents:docUploading?"none":"auto"}}>
+              <div style={{fontSize:13,fontWeight:600,color:C.acc,marginBottom:6}}>📄 PDF / 이미지 (AI 자동 분석)</div>
+              <div style={{fontSize:11,color:C.tx2,marginBottom:8}}>시험지 파일을 올리면 AI가 문제를 자동으로 추출합니다</div>
+              <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={e=>{if(e.target.files[0])uploadDocument(e.target.files[0]);e.target.value="";}} style={{fontFamily:F,fontSize:13,color:C.tx2}} />
+            </div>
+            {docUploading&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",background:"#fff8e1",borderRadius:10,marginBottom:10}}>
+              <span style={{display:"inline-block",width:18,height:18,border:"3px solid "+C.acc,borderTopColor:"transparent",borderRadius:"50%",animation:"spin 1s linear infinite"}} />
+              <span style={{fontSize:13,color:C.tx,fontWeight:500}}>AI가 시험 문제를 분석 중입니다... (최대 2분)</span>
+              <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+            </div>}
+            {docError&&<div style={{padding:"10px 14px",background:"#fdecea",borderRadius:10,marginBottom:10,fontSize:13,color:C.ng}}>{docError}</div>}
+            <div style={{borderTop:"1px solid "+C.bd,paddingTop:10,opacity:docUploading?0.5:1,pointerEvents:docUploading?"none":"auto"}}>
+              <div style={{fontSize:12,color:C.tx2,marginBottom:6}}>또는 JSON 파일 직접 업로드</div>
+              <input type="file" accept=".json" onChange={e=>{if(e.target.files[0])uploadExam(e.target.files[0]);e.target.value="";}} style={{fontFamily:F,fontSize:12,color:C.tx2}} />
+            </div>
+          </div>
+
+          {/* Gemini API 키 설정 */}
+          <div style={{background:C.card,borderRadius:14,padding:"14px 16px",boxShadow:"0 2px 8px rgba(0,0,0,0.04)",marginBottom:16}}>
+            <div style={{fontSize:14,fontWeight:700,marginBottom:10}}>🔑 Gemini API 키 설정</div>
+            {apiKeySet&&<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,padding:"8px 12px",background:"#e8f5e9",borderRadius:8}}>
+              <span style={{fontSize:13,color:C.ok,fontWeight:600}}>설정됨</span>
+              <span style={{fontSize:12,color:C.tx2,fontFamily:"monospace"}}>{apiKeyMasked}</span>
+            </div>}
+            {!apiKeySet&&<div style={{fontSize:12,color:C.ng,marginBottom:8}}>API 키가 설정되지 않았습니다. PDF/이미지 업로드를 사용하려면 키를 입력하세요.</div>}
+            <div style={{display:"flex",gap:8}}>
+              <input value={apiKeyInput} onChange={e=>setApiKeyInput(e.target.value)} placeholder={apiKeySet?"새 키로 변경...":"Gemini API 키 입력"} type="password" style={{fontFamily:F,fontSize:13,padding:"8px 12px",background:C.inp,border:`2px solid ${C.bd}`,borderRadius:8,color:C.tx,flex:1}} onKeyDown={e=>{if(e.key==="Enter")saveApiKey();}} />
+              <button onClick={saveApiKey} disabled={apiKeySaving||!apiKeyInput.trim()} style={{fontFamily:F,fontSize:12,fontWeight:600,border:"none",borderRadius:8,cursor:"pointer",padding:"8px 16px",background:apiKeyInput.trim()?C.acc:C.bd,color:apiKeyInput.trim()?C.wh:C.tx2,whiteSpace:"nowrap"}}>{apiKeySaving?"저장 중...":"저장"}</button>
+            </div>
           </div>
 
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:16}}>

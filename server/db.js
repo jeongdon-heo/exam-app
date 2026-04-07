@@ -44,6 +44,11 @@ db.exec(`
     meta     TEXT
   );
 
+  CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS submissions (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
     exam_id   INTEGER NOT NULL REFERENCES exams(id) ON DELETE CASCADE,
@@ -126,6 +131,15 @@ export function deleteSubmissions(examId) {
 export function verifyTeacherPw(examId, pw) {
   const exam = db.prepare("SELECT teacher_pw FROM exams WHERE id = ?").get(examId);
   return exam && exam.teacher_pw === pw;
+}
+
+export function getSetting(key) {
+  const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(key);
+  return row ? row.value : null;
+}
+
+export function setSetting(key, value) {
+  db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(key, value);
 }
 
 export default db;
